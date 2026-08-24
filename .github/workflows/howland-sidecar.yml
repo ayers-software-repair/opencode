@@ -1,0 +1,87 @@
+# Builds the Howland-branded opencode sidecar binaries the openwork fork's desktop release
+# consumes, and publishes them as release v1.17.11-howland ON THIS FORK. The openwork fork's
+# release.yml points OPENCODE_GITHUB_REPO here and constants.json pins opencodeVersion
+# v1.17.11-howland, so prepare-sidecar.mjs fetches these six assets by their upstream names.
+#
+# ORDER MATTERS: this release must exist BEFORE any Howland desktop build runs — the sidecar
+# fetch hard-fails (exit 1) on a missing asset and one dead leg blocks the whole desktop
+# release. Dispatch-only, never on push: the fork's other workflows stay disabled and this
+# one runs only when the owner cuts or refreshes the sidecar.
+#
+# Everything cross-compiles from one Linux runner via Bun.build (upstream uses mac/windows
+# runners only for signing, which Howland defers until its certs exist; electron-builder
+# re-signs the nested mac binaries at desktop-package time once those land).
+
+name: Howland Sidecar
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch to build (the branded branch: upstream v1.17.11 + Howland theme)'
+        default: 'howland-sidecar'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Script.version verbatim; the binaries self-report it and prepare-sidecar.mjs matches
+      # it against constants.json, so it must equal the release tag minus the leading v.
+      OPENCODE_VERSION: 1.17.11-howland
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # Must satisfy the root package.json packageManager pin (bun@1.3.14) — the Script
+          # module refuses to run outside ^that range.
+          bun-version: 1.3.14
+
+      - name: Install workspace dependencies
+        run: bun install
+
+      # build.ts builds all 12 upstream targets; the six the desktop matrix consumes are
+      # packaged below and the rest are discarded. No fork patch to the build script — zero
+      # upstream drift is worth the extra minutes.
+      - name: Build all targets
+        working-directory: packages/opencode
+        run: bun run script/build.ts
+
+      - name: Package the six desktop sidecar assets
+        working-directory: packages/opencode
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          # Exact upstream asset names, from openwork's prepare-sidecar.mjs opencodeAssetByTarget.
+          for key in opencode-darwin-arm64 opencode-darwin-x64-baseline \
+                     opencode-windows-x64-baseline opencode-windows-arm64; do
+            ( cd "dist/$key/bin" && zip -qr "../../../release/$key.zip" . )
+          done
+          for key in opencode-linux-x64-baseline opencode-linux-arm64; do
+            ( cd "dist/$key/bin" && tar -czf "../../../release/$key.tar.gz" . )
+          done
+          ( cd release && sha256sum opencode-* > SHA256SUMS-sidecar.txt && cat SHA256SUMS-sidecar.txt )
+
+      # Publishes on THIS fork (not howland-releases): sidecar assets are desktop-build
+      # inputs, not user-facing downloads, so they stay off the one release train.
+      - name: Publish fork release v1.17.11-howland
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v${OPENCODE_VERSION}"
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+              --target "${{ github.event.inputs.ref }}" \
+              --title "Howland sidecar $TAG" \
+              --notes "Howland-branded opencode sidecar binaries (upstream v1.17.11 + Howland TUI theme). Consumed by the openwork fork's desktop release; not a user-facing download. Upstream MIT license and notices retained."
+          fi
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            packages/opencode/release/opencode-* packages/opencode/release/SHA256SUMS-sidecar.txt
