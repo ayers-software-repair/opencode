@@ -9,26 +9,36 @@
 # one runs only when the owner cuts or refreshes the sidecar.
 #
 # Everything cross-compiles from one Linux runner via Bun.build (upstream uses mac/windows
-# runners only for signing, which Howland defers until its certs exist; electron-builder
-# re-signs the nested mac binaries at desktop-package time once those land).
+# runners only for signing, which Howland defers until its certs exist). NOTE: openwork's
+# electron-builder does NOT re-sign these at desktop-package time (sidecars ship via
+# extraResources with no mac.binaries list; the only mac signature is prepare-sidecar's
+# ad-hoc one) — before notarization is ever enabled, openwork must add the sidecar paths to
+# mac.binaries or notarization will reject the bundle.
+#
+# The ref is HARDCODED to the branded branch on purpose: a free-form ref input with the
+# version pinned below would publish whatever was checked out — dev, hundreds of commits
+# newer — under the v1.17.11-howland tag, --clobber overwriting the good assets. The
+# version assertion after the build is the second lock on the same door.
 
 name: Howland Sidecar
 
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: 'Branch to build (the branded branch: upstream v1.17.11 + Howland theme)'
-        default: 'howland-sidecar'
-        required: true
 
 permissions:
   contents: write
 
+# Two dispatches must not interleave `gh release upload --clobber` asset sets.
+concurrency:
+  group: howland-sidecar
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Upstream builds on a 4-vCPU runner and this job doubles the work (12 targets built,
+    # 6 shipped — the zero-drift tradeoff). Never measured; tighten from observed runtime.
+    timeout-minutes: 90
     env:
       # Script.version verbatim; the binaries self-report it and prepare-sidecar.mjs matches
       # it against constants.json, so it must equal the release tag minus the leading v.
@@ -36,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.ref }}
+          ref: howland-sidecar
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -54,18 +64,29 @@ jobs:
         working-directory: packages/opencode
         run: bun run script/build.ts
 
+      # A dropped OPENCODE_VERSION would stamp the npm registry version into binaries
+      # published under the Howland tag; the self-reported version is what openwork's
+      # prepare-sidecar matches, so assert it before anything is packaged.
+      - name: Assert the stamped version
+        working-directory: packages/opencode
+        run: |
+          set -euo pipefail
+          got="$(./dist/opencode-linux-x64/bin/opencode --version)"
+          test "$got" = "$OPENCODE_VERSION" || { echo "version stamp is $got, want $OPENCODE_VERSION"; exit 1; }
+
       - name: Package the six desktop sidecar assets
         working-directory: packages/opencode
         run: |
           set -euo pipefail
           mkdir -p release
           # Exact upstream asset names, from openwork's prepare-sidecar.mjs opencodeAssetByTarget.
+          # `*`, not `.`: Windows Expand-Archive is the consumer least tolerant of a ./ prefix.
           for key in opencode-darwin-arm64 opencode-darwin-x64-baseline \
                      opencode-windows-x64-baseline opencode-windows-arm64; do
-            ( cd "dist/$key/bin" && zip -qr "../../../release/$key.zip" . )
+            ( cd "dist/$key/bin" && zip -qr "../../../release/$key.zip" -- * )
           done
           for key in opencode-linux-x64-baseline opencode-linux-arm64; do
-            ( cd "dist/$key/bin" && tar -czf "../../../release/$key.tar.gz" . )
+            ( cd "dist/$key/bin" && tar -czf "../../../release/$key.tar.gz" -- * )
           done
           ( cd release && sha256sum opencode-* > SHA256SUMS-sidecar.txt && cat SHA256SUMS-sidecar.txt )
 
@@ -79,7 +100,7 @@ jobs:
           TAG="v${OPENCODE_VERSION}"
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --target "${{ github.event.inputs.ref }}" \
+              --target howland-sidecar \
               --title "Howland sidecar $TAG" \
               --notes "Howland-branded opencode sidecar binaries (upstream v1.17.11 + Howland TUI theme). Consumed by the openwork fork's desktop release; not a user-facing download. Upstream MIT license and notices retained."
           fi
