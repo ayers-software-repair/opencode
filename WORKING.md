@@ -225,3 +225,39 @@ down the reason, not by leaving it unmentioned. Do not stop at the newest sectio
 
 Work top-down through the priority order, then sweep the file from the top for anything still open
 and finish it. Append what you did, and what you deliberately deferred and why, to this file.
+
+---
+
+# NEW FINDING 2026-08-24 — the workflow surface was never swept
+
+My earlier audit recorded both `v*`-tag workflows as guarded. **The rest of the surface was never
+looked at.** This fork carries **27 workflows and only 4 carry a repository guard** (`deploy`,
+`docs-update`, `publish`, `stats`). Twenty-three are unguarded and would run on this fork the moment
+Actions is funded.
+
+## 18. HIGH — 23 unguarded workflows, including publish paths and scheduled bots
+
+**Scheduled — run forever once funded:** `beta.yml`, `close-issues.yml`, `close-prs.yml`,
+`compliance-close.yml`, `docs-locale-sync.yml`.
+
+`close-issues.yml` and `close-prs.yml` deserve their own line: they are upstream's
+housekeeping bots, and on this fork they would **auto-close issues and PRs on a schedule**. The
+owner's cross-machine workflow is built on GitHub issues. A scheduled bot that closes them is a
+direct conflict, not a cosmetic one.
+
+**Publishing paths — would publish under Ayers' account, or to upstream's channels:**
+- `publish-vscode.yml` — publishes a VS Code extension to the marketplace.
+- `publish-github-action.yml` / `release-github-action.yml` — publishes a GitHub Action.
+- `containers.yml` — pushes container images.
+- `notify-discord.yml` — posts to a Discord webhook on release. Upstream's, not ours.
+
+**Upstream repo-management bots with no role here:** `triage.yml`, `pr-management.yml`,
+`pr-standards.yml`, `duplicate-issues.yml`, `review.yml`, `opencode.yml`, `nix-eval.yml`,
+`nix-hashes.yml`, `storybook.yml`.
+
+**The fix is one decision, applied uniformly:** delete every workflow this fork does not need; give
+every one it keeps the same `if: github.repository == 'ayers-software-repair/opencode'` guard at job
+level. Prefer deleting — a fork carrying 23 workflows it never runs is exactly the baggage the owner
+ruled out for v1, and each is a live publish path nobody is watching.
+
+Do this **before** Actions is funded. A scheduled workflow does not wait for approval.
