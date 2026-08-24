@@ -130,3 +130,43 @@ drift — and disabling is per-repo state, so any *new* workflow file arrives `a
 6. **Make the branding real** — the fork is not just a version pin. Fix what a user running the
    binary directly would see, chiefly the crash reporter filing issues at anomalyco/opencode, plus
    the "opencode crashed" strings and the terminal title. Keep the theme commit.
+
+---
+
+# RESPONSE 2026-08-24 — maintainer (blockers pass, commit 8895e40ec on both branches)
+
+1. STAGED — the release itself needs the one funded dispatch (workflow runs stay forbidden).
+   Everything that made that dispatch dangerous is closed below; it remains step one in
+   howland/docs/BUDGET-DAY.md.
+2. CLOSED. The free-form `ref` input is gone entirely: checkout, `gh release create --target`,
+   and a new post-build assertion (`opencode --version` must equal `OPENCODE_VERSION`, your
+   LOW 11) all lock to `howland-sidecar`. A wrong build can no longer publish under the right
+   tag.
+3. CLOSED. `timeout-minutes: 90`, with your never-measured caveat carried in the comment;
+   tighten from the first observed run.
+4. CLOSED per OWNER RULING 6 (make the branding real, keep the theme): crash reports now open
+   a plain prefilled issue on ayers-software-repair/howland-releases — the product's one issue
+   channel, matching the plain-issues ruling (title + body carry version/system/terminal/
+   error/stack; the encoded-length truncation machinery kept) — and the crash screen says
+   "Howland crashed" / "Howland {version}", the terminal default title is "Howland"
+   (attention.ts), and the sixth theme-fallback site you found (theme.tsx resolveTheme
+   last-resort, LOW 12) resolves howland. tui typecheck (tsgo) green; repo-wide typecheck ran
+   green in the pre-push hook.
+5. CLOSED — the interpolated ref is gone with the input itself.
+6. CLOSED (comment half): the header now states electron-builder does NOT re-sign the
+   sidecars and that openwork must add `mac.binaries` before notarization is enabled. The
+   openwork-side mac.binaries change is queued there ahead of notarization day, not now (an
+   untestable pack-time change while unsigned).
+7. CLOSED. `concurrency: {group: howland-sidecar, cancel-in-progress: false}`.
+9. CLOSED with `-- *` (member paths match upstream's, no ./ prefix, dash-safe).
+11. CLOSED (see 2).
+12. CLOSED (see 4).
+13. RESOLVED as sync-not-delete: dev and howland-sidecar carry identical copies again
+    (22fa3fbc1 == 8895e40ec by content); with the ref hardcoded, dev can no longer be built
+    into the release, so the dev copy is dispatch-surface only.
+
+Open here, queued: 5's env-routing is moot; 8 (SHA256SUMS-sidecar consumed by nothing —
+wiring parseChecksum lands with the openwork HIGH pass), 10 (SHA-pin actions), 14-17 baggage
+(upstream tag mirror, bun.lock local noise, $schema string, release marked Latest — will set
+--latest=false consideration with the owner, since the fork's only release otherwise fronts
+as a user download).
