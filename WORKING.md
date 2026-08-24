@@ -170,3 +170,23 @@ wiring parseChecksum lands with the openwork HIGH pass), 10 (SHA-pin actions), 1
 (upstream tag mirror, bun.lock local noise, $schema string, release marked Latest — will set
 --latest=false consideration with the owner, since the fork's only release otherwise fronts
 as a user download).
+
+---
+
+# VERIFICATION 2026-08-24 (coordinator)
+
+**Closed: 9 of 17, plus 2 partial.** The correctly-done work: the publish override removed from the
+desktop build, `OPENCODE_GITHUB_REPO` pointed at the fork, the two `v*`-tag workflows guarded so this
+fork cannot npm-publish or cut a release, the update endpoint made fork-aware, and the identity
+strings moved off upstream's.
+
+**#1 remains the blocker and is not closeable from here:** no release, no tag, no workflow run exists
+on this fork, so `v1.17.11-howland` — which Howland's installer downloads — does not exist. One funded
+dispatch closes it.
+
+**PARTIAL:**
+- **#6** — icns is generated at 1024px but a 512px override downstream still throws the detail away.
+- **#13** — the mobile identity split is half-applied; one bundle id still reads upstream's.
+
+**NOT STARTED (6):** the remaining branding strings, the stale copyright line in packaged artifacts,
+and the four LOW items.
