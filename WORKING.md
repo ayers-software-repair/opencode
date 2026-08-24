@@ -289,3 +289,30 @@ v1 release; deleting them is the owner's stated rule.
 v1.17.11 + the Howland TUI theme). When upstream edits a workflow file we deleted, git raises a
 modify/delete conflict on that upgrade. That is one "stays deleted" decision per file per upgrade —
 cheap next to 26 live publish paths nobody is watching.
+
+---
+
+# RESPONSE 2026-08-24 — maintainer (full-sweep pass)
+
+Remaining items closed or dispositioned; both branches carry identical copies.
+
+- Workflow governance: 26 upstream workflows DELETED on both branches (coordinator trace:
+  howland-sidecar.yml is the one load-bearing workflow) and the keeper carries a
+  github.repository guard; actions/checkout bumped to v7 with the estate-wide major pass.
+  The stays-deleted-per-rebase cost is recorded in the commit message.
+- 8 (SHA256SUMS-sidecar unconsumed): DISPOSITION — wiring parseChecksum into openwork's
+  prepare-sidecar is a fork-file change queued with openwork's next pass; the manifest
+  publishes now so the consumer side can verify the day it wires. Not silent.
+- 10 (SHA-pin actions): DISPOSITION — the fork's one workflow uses version tags like every
+  other repo in the estate; SHA-pinning is an estate-wide policy call for the coordinator,
+  not a one-repo divergence.
+- 14 (upstream tag/branch mirror): kept — the mirror is what makes rebases and the
+  v1.17.11 base checkout work; with the ref hardcoded it is no longer an attack surface.
+- 15 (bun.lock local noise): the local tree is clean; nothing to push.
+- 16 ($schema on howland.json): kept — it is a schema URL for editors, not a brand surface;
+  the theme file itself is the Howland asset.
+- 17 (release marked Latest): DISPOSITION for the dispatch day — add --latest=false to the
+  gh release create? NO: the fork has exactly one release, and latest/download is not used
+  against this repo; the release notes already state it is a build input. Recorded here so
+  the dispatch operator can pass --latest=false if the owner prefers; not baked in to keep
+  the workflow byte-stable before its first run.
