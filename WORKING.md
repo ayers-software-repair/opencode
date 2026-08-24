@@ -261,3 +261,31 @@ level. Prefer deleting — a fork carrying 23 workflows it never runs is exactly
 ruled out for v1, and each is a live publish path nobody is watching.
 
 Do this **before** Actions is funded. A scheduled workflow does not wait for approval.
+
+## Correction to the finding above — the answer is delete, and the number is 26 of 27
+
+Traced the actual dependency chain rather than assuming every workflow had a reason to exist:
+
+```
+opencode/howland-sidecar.yml  →  release v1.17.11-howland
+        ↓  (openwork/constants.json "opencodeVersion", OPENCODE_GITHUB_REPO)
+openwork/release.yml          →  13 desktop assets on howland-releases
+        ↓  (howland/installer/release_assets_test.go binds the exact names)
+howland                       →  site links, tray updater, bundle command
+```
+
+**One workflow in this repo is load-bearing: `howland-sidecar.yml`.** It produces the sidecar
+release the Howland desktop build consumes. Nothing else here feeds anything Ayers ships.
+
+The other 26 are upstream's CI for upstream's project — VS Code marketplace publishing, container
+pushes, Discord notifications, Nix evaluation, Storybook, AUR validation, and six repo-management
+bots. They are not "unguarded", they are **not ours**. Guarding them leaves 26 files of baggage in a
+v1 release; deleting them is the owner's stated rule.
+
+**Delete 26, keep `howland-sidecar.yml`, and guard that one** with
+`if: github.repository == 'ayers-software-repair/opencode'` so it cannot fire anywhere else.
+
+**The one honest cost:** this fork rebases onto upstream tags (`v1.17.11-howland` = upstream
+v1.17.11 + the Howland TUI theme). When upstream edits a workflow file we deleted, git raises a
+modify/delete conflict on that upgrade. That is one "stays deleted" decision per file per upgrade —
+cheap next to 26 live publish paths nobody is watching.
