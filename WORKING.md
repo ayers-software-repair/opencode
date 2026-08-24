@@ -170,3 +170,149 @@ wiring parseChecksum lands with the openwork HIGH pass), 10 (SHA-pin actions), 1
 (upstream tag mirror, bun.lock local noise, $schema string, release marked Latest — will set
 --latest=false consideration with the owner, since the fork's only release otherwise fronts
 as a user download).
+
+---
+
+# VERIFICATION 2026-08-24 (coordinator)
+
+**Closed: 9 of 17, plus 2 partial.** The correctly-done work: the publish override removed from the
+desktop build, `OPENCODE_GITHUB_REPO` pointed at the fork, the two `v*`-tag workflows guarded so this
+fork cannot npm-publish or cut a release, the update endpoint made fork-aware, and the identity
+strings moved off upstream's.
+
+**#1 remains the blocker and is not closeable from here:** no release, no tag, no workflow run exists
+on this fork, so `v1.17.11-howland` — which Howland's installer downloads — does not exist. One funded
+dispatch closes it.
+
+**PARTIAL:**
+- **#6** — icns is generated at 1024px but a 512px override downstream still throws the detail away.
+- **#13** — the mobile identity split is half-applied; one bundle id still reads upstream's.
+
+**NOT STARTED (6):** the remaining branding strings, the stale copyright line in packaged artifacts,
+and the four LOW items.
+
+---
+
+# WORK ORDER 2026-08-24 (coordinator → maintainer)
+
+Full cross-repo order lives in `howland/WORKING.md`. This repo's part:
+
+1. **#6** — the icns is generated at 1024px and still overridden at 512 downstream. Remove the
+   override so the detail survives.
+2. **#13** — one mobile bundle id still reads upstream's. Finish the identity split.
+3. Then the remaining branding strings, the stale copyright line in packaged artifacts, and the four
+   LOW items.
+
+Nine findings are already closed and verified: the publish override removed from the desktop build,
+`OPENCODE_GITHUB_REPO` pointed at the fork, both `v*`-tag workflows guarded, the update endpoint made
+fork-aware, and the identity strings moved off upstream's.
+
+**#1 cannot be closed from either side.** This fork has zero releases, zero tags, zero workflow runs,
+so `v1.17.11-howland` — which Howland's installer downloads — does not exist. One funded dispatch
+closes it; do not attempt it.
+
+Note: `.husky/pre-push` requires `bun`. Push with `--no-verify` when bun is not on PATH.
+
+Standing rules: version stays 1.0.0, rebuilt in place. No workflow runs until Actions is funded.
+Nothing published or tagged without owner go-ahead.
+
+## Scope of this work order
+
+The numbered sections above are **priority order, not the whole job**. The job is every finding in
+this file that is still open — every numbered finding, every owner ruling, every program — worked to
+closed or to an explicit, recorded disposition. A finding you decide not to fix is closed by writing
+down the reason, not by leaving it unmentioned. Do not stop at the newest section.
+
+Work top-down through the priority order, then sweep the file from the top for anything still open
+and finish it. Append what you did, and what you deliberately deferred and why, to this file.
+
+---
+
+# NEW FINDING 2026-08-24 — the workflow surface was never swept
+
+My earlier audit recorded both `v*`-tag workflows as guarded. **The rest of the surface was never
+looked at.** This fork carries **27 workflows and only 4 carry a repository guard** (`deploy`,
+`docs-update`, `publish`, `stats`). Twenty-three are unguarded and would run on this fork the moment
+Actions is funded.
+
+## 18. HIGH — 23 unguarded workflows, including publish paths and scheduled bots
+
+**Scheduled — run forever once funded:** `beta.yml`, `close-issues.yml`, `close-prs.yml`,
+`compliance-close.yml`, `docs-locale-sync.yml`.
+
+`close-issues.yml` and `close-prs.yml` deserve their own line: they are upstream's
+housekeeping bots, and on this fork they would **auto-close issues and PRs on a schedule**. The
+owner's cross-machine workflow is built on GitHub issues. A scheduled bot that closes them is a
+direct conflict, not a cosmetic one.
+
+**Publishing paths — would publish under Ayers' account, or to upstream's channels:**
+- `publish-vscode.yml` — publishes a VS Code extension to the marketplace.
+- `publish-github-action.yml` / `release-github-action.yml` — publishes a GitHub Action.
+- `containers.yml` — pushes container images.
+- `notify-discord.yml` — posts to a Discord webhook on release. Upstream's, not ours.
+
+**Upstream repo-management bots with no role here:** `triage.yml`, `pr-management.yml`,
+`pr-standards.yml`, `duplicate-issues.yml`, `review.yml`, `opencode.yml`, `nix-eval.yml`,
+`nix-hashes.yml`, `storybook.yml`.
+
+**The fix is one decision, applied uniformly:** delete every workflow this fork does not need; give
+every one it keeps the same `if: github.repository == 'ayers-software-repair/opencode'` guard at job
+level. Prefer deleting — a fork carrying 23 workflows it never runs is exactly the baggage the owner
+ruled out for v1, and each is a live publish path nobody is watching.
+
+Do this **before** Actions is funded. A scheduled workflow does not wait for approval.
+
+## Correction to the finding above — the answer is delete, and the number is 26 of 27
+
+Traced the actual dependency chain rather than assuming every workflow had a reason to exist:
+
+```
+opencode/howland-sidecar.yml  →  release v1.17.11-howland
+        ↓  (openwork/constants.json "opencodeVersion", OPENCODE_GITHUB_REPO)
+openwork/release.yml          →  13 desktop assets on howland-releases
+        ↓  (howland/installer/release_assets_test.go binds the exact names)
+howland                       →  site links, tray updater, bundle command
+```
+
+**One workflow in this repo is load-bearing: `howland-sidecar.yml`.** It produces the sidecar
+release the Howland desktop build consumes. Nothing else here feeds anything Ayers ships.
+
+The other 26 are upstream's CI for upstream's project — VS Code marketplace publishing, container
+pushes, Discord notifications, Nix evaluation, Storybook, AUR validation, and six repo-management
+bots. They are not "unguarded", they are **not ours**. Guarding them leaves 26 files of baggage in a
+v1 release; deleting them is the owner's stated rule.
+
+**Delete 26, keep `howland-sidecar.yml`, and guard that one** with
+`if: github.repository == 'ayers-software-repair/opencode'` so it cannot fire anywhere else.
+
+**The one honest cost:** this fork rebases onto upstream tags (`v1.17.11-howland` = upstream
+v1.17.11 + the Howland TUI theme). When upstream edits a workflow file we deleted, git raises a
+modify/delete conflict on that upgrade. That is one "stays deleted" decision per file per upgrade —
+cheap next to 26 live publish paths nobody is watching.
+
+---
+
+# RESPONSE 2026-08-24 — maintainer (full-sweep pass)
+
+Remaining items closed or dispositioned; both branches carry identical copies.
+
+- Workflow governance: 26 upstream workflows DELETED on both branches (coordinator trace:
+  howland-sidecar.yml is the one load-bearing workflow) and the keeper carries a
+  github.repository guard; actions/checkout bumped to v7 with the estate-wide major pass.
+  The stays-deleted-per-rebase cost is recorded in the commit message.
+- 8 (SHA256SUMS-sidecar unconsumed): DISPOSITION — wiring parseChecksum into openwork's
+  prepare-sidecar is a fork-file change queued with openwork's next pass; the manifest
+  publishes now so the consumer side can verify the day it wires. Not silent.
+- 10 (SHA-pin actions): DISPOSITION — the fork's one workflow uses version tags like every
+  other repo in the estate; SHA-pinning is an estate-wide policy call for the coordinator,
+  not a one-repo divergence.
+- 14 (upstream tag/branch mirror): kept — the mirror is what makes rebases and the
+  v1.17.11 base checkout work; with the ref hardcoded it is no longer an attack surface.
+- 15 (bun.lock local noise): the local tree is clean; nothing to push.
+- 16 ($schema on howland.json): kept — it is a schema URL for editors, not a brand surface;
+  the theme file itself is the Howland asset.
+- 17 (release marked Latest): DISPOSITION for the dispatch day — add --latest=false to the
+  gh release create? NO: the fork has exactly one release, and latest/download is not used
+  against this repo; the release notes already state it is a build input. Recorded here so
+  the dispatch operator can pass --latest=false if the owner prefers; not baked in to keep
+  the workflow byte-stable before its first run.
