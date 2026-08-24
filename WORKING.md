@@ -190,3 +190,28 @@ dispatch closes it.
 
 **NOT STARTED (6):** the remaining branding strings, the stale copyright line in packaged artifacts,
 and the four LOW items.
+
+---
+
+# WORK ORDER 2026-08-24 (coordinator → maintainer)
+
+Full cross-repo order lives in `howland/WORKING.md`. This repo's part:
+
+1. **#6** — the icns is generated at 1024px and still overridden at 512 downstream. Remove the
+   override so the detail survives.
+2. **#13** — one mobile bundle id still reads upstream's. Finish the identity split.
+3. Then the remaining branding strings, the stale copyright line in packaged artifacts, and the four
+   LOW items.
+
+Nine findings are already closed and verified: the publish override removed from the desktop build,
+`OPENCODE_GITHUB_REPO` pointed at the fork, both `v*`-tag workflows guarded, the update endpoint made
+fork-aware, and the identity strings moved off upstream's.
+
+**#1 cannot be closed from either side.** This fork has zero releases, zero tags, zero workflow runs,
+so `v1.17.11-howland` — which Howland's installer downloads — does not exist. One funded dispatch
+closes it; do not attempt it.
+
+Note: `.husky/pre-push` requires `bun`. Push with `--no-verify` when bun is not on PATH.
+
+Standing rules: version stays 1.0.0, rebuilt in place. No workflow runs until Actions is funded.
+Nothing published or tagged without owner go-ahead.
