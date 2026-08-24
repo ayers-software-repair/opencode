@@ -35,6 +35,8 @@ concurrency:
 
 jobs:
   build:
+    # Repo guard: the fork rebases onto upstream; a copy of this file anywhere else must be inert.
+    if: github.repository == 'ayers-software-repair/opencode'
     runs-on: ubuntu-latest
     # Upstream builds on a 4-vCPU runner and this job doubles the work (12 targets built,
     # 6 shipped — the zero-drift tradeoff). Never measured; tighten from observed runtime.
