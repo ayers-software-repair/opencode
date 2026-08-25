@@ -88,12 +88,18 @@ jobs:
       # pins the SHA beside the version and refuses to build against any other, so a stale pin is
       # a failed preflight rather than a silently wrong binary.
       - name: Record the source commit these binaries were built from
-        working-directory: packages/opencode
         run: |
           set -euo pipefail
-          mkdir -p release
-          printf '%s' "$GITHUB_SHA" > release/SOURCE-COMMIT.txt
-          echo "sidecar built from $GITHUB_SHA"
+          # `git rev-parse HEAD`, NOT $GITHUB_SHA. This workflow is dispatched from the DEFAULT
+          # branch (dev) but checks out `ref: howland-sidecar` — so $GITHUB_SHA is the commit of
+          # the branch that started the run, not the commit these binaries were built from.
+          # Stamping it would record the wrong provenance while looking entirely correct, which is
+          # precisely the failure this file exists to prevent.
+          SRC="$(git rev-parse HEAD)"
+          mkdir -p packages/opencode/release
+          printf '%s' "$SRC" > packages/opencode/release/SOURCE-COMMIT.txt
+          echo "SIDECAR_SOURCE_COMMIT=$SRC" >> "$GITHUB_ENV"
+          echo "sidecar built from $SRC (dispatch ref was $GITHUB_SHA)"
 
       - name: Package the six desktop sidecar assets
         working-directory: packages/opencode
@@ -130,7 +136,7 @@ jobs:
             echo "Consumed by the openwork fork's desktop release; not a user-facing download."
             echo "Upstream MIT license and notices retained."
             echo
-            echo "Built from source commit \`$GITHUB_SHA\`."
+            echo "Built from source commit \`$SIDECAR_SOURCE_COMMIT\`."
             echo
             echo "openwork's constants.json pins this SHA and its preflight refuses to build against"
             echo "any other, so that line is checked by a machine rather than read by a person."
@@ -152,11 +158,11 @@ jobs:
             echo
             echo "| | |"
             echo "|---|---|"
-            echo "| Source commit | $GITHUB_SHA |"
+            echo "| Source commit | $SIDECAR_SOURCE_COMMIT |"
             echo "| Version stamp | $OPENCODE_VERSION |"
             echo
             echo "openwork's constants.json must carry opencodeVersion $TAG AND opencodeCommit"
-            echo "$GITHUB_SHA. Its preflight fails if either disagrees with this release."
+            echo "$SIDECAR_SOURCE_COMMIT. Its preflight fails if either disagrees with this release."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # THE CHAIN, ENFORCED BY THE MACHINE. The order sidecar -> desktop -> server is real: openwork's
