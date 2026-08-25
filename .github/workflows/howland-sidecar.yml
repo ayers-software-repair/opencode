@@ -51,7 +51,7 @@ jobs:
       # it against constants.json, so it must equal the release tag minus the leading v.
       OPENCODE_VERSION: 1.17.11-howland
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: howland-sidecar
 
