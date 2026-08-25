@@ -24,6 +24,11 @@ name: Howland Sidecar
 
 on:
   workflow_dispatch:
+    inputs:
+      chain:
+        description: 'On success, start the openwork desktop build automatically'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -76,6 +81,26 @@ jobs:
           got="$(./dist/opencode-linux-x64/bin/opencode --version)"
           test "$got" = "$OPENCODE_VERSION" || { echo "version stamp is $got, want $OPENCODE_VERSION"; exit 1; }
 
+      # PROVENANCE. The version is a NAME, and a name cannot prove it is current: change the
+      # fork, forget to re-cut the sidecar, and constants.json still points at a release that
+      # EXISTS — so a preflight checking existence passes while the desktop builds against a
+      # stale sidecar, and nothing reports it. Recording the SOURCE COMMIT closes that. openwork
+      # pins the SHA beside the version and refuses to build against any other, so a stale pin is
+      # a failed preflight rather than a silently wrong binary.
+      - name: Record the source commit these binaries were built from
+        run: |
+          set -euo pipefail
+          # `git rev-parse HEAD`, NOT $GITHUB_SHA. This workflow is dispatched from the DEFAULT
+          # branch (dev) but checks out `ref: howland-sidecar` — so $GITHUB_SHA is the commit of
+          # the branch that started the run, not the commit these binaries were built from.
+          # Stamping it would record the wrong provenance while looking entirely correct, which is
+          # precisely the failure this file exists to prevent.
+          SRC="$(git rev-parse HEAD)"
+          mkdir -p packages/opencode/release
+          printf '%s' "$SRC" > packages/opencode/release/SOURCE-COMMIT.txt
+          echo "SIDECAR_SOURCE_COMMIT=$SRC" >> "$GITHUB_ENV"
+          echo "sidecar built from $SRC (dispatch ref was $GITHUB_SHA)"
+
       - name: Package the six desktop sidecar assets
         working-directory: packages/opencode
         run: |
@@ -90,7 +115,9 @@ jobs:
           for key in opencode-linux-x64-baseline opencode-linux-arm64; do
             ( cd "dist/$key/bin" && tar -czf "../../../release/$key.tar.gz" -- * )
           done
-          ( cd release && sha256sum opencode-* > SHA256SUMS-sidecar.txt && cat SHA256SUMS-sidecar.txt )
+          # SOURCE-COMMIT.txt is deliberately inside the manifest: it is part of what this release
+          # asserts about itself, so a swapped provenance file is as detectable as a swapped binary.
+          ( cd release && sha256sum opencode-* SOURCE-COMMIT.txt > SHA256SUMS-sidecar.txt && cat SHA256SUMS-sidecar.txt )
 
       # Publishes on THIS fork (not howland-releases): sidecar assets are desktop-build
       # inputs, not user-facing downloads, so they stay off the one release train.
@@ -100,11 +127,76 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v${OPENCODE_VERSION}"
+          # The tag is re-cut in place on every dispatch, so the notes must describe THIS build
+          # rather than the first one — hence a notes file written every run, not a create-only
+          # string.
+          NOTES="$RUNNER_TEMP/notes.md"
+          {
+            echo "Howland-branded opencode sidecar binaries (upstream v1.17.11 + Howland TUI theme)."
+            echo "Consumed by the openwork fork's desktop release; not a user-facing download."
+            echo "Upstream MIT license and notices retained."
+            echo
+            echo "Built from source commit \`$SIDECAR_SOURCE_COMMIT\`."
+            echo
+            echo "openwork's constants.json pins this SHA and its preflight refuses to build against"
+            echo "any other, so that line is checked by a machine rather than read by a person."
+          } > "$NOTES"
+
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --target howland-sidecar \
-              --title "Howland sidecar $TAG" \
-              --notes "Howland-branded opencode sidecar binaries (upstream v1.17.11 + Howland TUI theme). Consumed by the openwork fork's desktop release; not a user-facing download. Upstream MIT license and notices retained."
+              --target howland-sidecar --title "Howland sidecar $TAG" --notes-file "$NOTES"
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file "$NOTES"
           fi
           gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
-            packages/opencode/release/opencode-* packages/opencode/release/SHA256SUMS-sidecar.txt
+            packages/opencode/release/opencode-* \
+            packages/opencode/release/SHA256SUMS-sidecar.txt \
+            packages/opencode/release/SOURCE-COMMIT.txt
+
+          {
+            echo "## Howland sidecar $TAG"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Source commit | $SIDECAR_SOURCE_COMMIT |"
+            echo "| Version stamp | $OPENCODE_VERSION |"
+            echo
+            echo "openwork's constants.json must carry opencodeVersion $TAG AND opencodeCommit"
+            echo "$SIDECAR_SOURCE_COMMIT. Its preflight fails if either disagrees with this release."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # THE CHAIN, ENFORCED BY THE MACHINE. The order sidecar -> desktop -> server is real: openwork's
+  # constants.json pins this sidecar, and prepare-sidecar.mjs exits 1 on a missing asset, so a
+  # desktop build started first dies six times over. That order used to live in a document the
+  # owner did not know existed. A written step is not a step that happens.
+  #
+  # Only on SUCCESS: `needs` plus an explicit result check, because `always()` would let a red
+  # sidecar start a desktop build against binaries that were never published.
+  #
+  # `chain` defaults TRUE and is opt-OUT, so running one link alone while iterating is a
+  # deliberate choice rather than the default outcome.
+  chain-desktop:
+    needs: [build]
+    if: ${{ needs.build.result == 'success' && (github.event_name != 'workflow_dispatch' || inputs.chain) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Start the openwork desktop build
+        env:
+          # Needs contents:write on the openwork fork — the same PAT the release workflows use.
+          GH_TOKEN: ${{ secrets.RELEASES_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::RELEASES_PAT is not set, so the desktop build cannot be started."
+            echo "::error::The sidecar itself published fine; run openwork's release.yml by hand."
+            exit 1
+          fi
+          gh workflow run release.yml \
+            --repo ayers-software-repair/openwork --ref howland \
+            -f tag=howland-v1.0.0
+          {
+            echo
+            echo "Started the openwork desktop build (release.yml on howland-v1.0.0)."
+            echo "It will start the server release in turn unless that was opted out of."
+          } >> "$GITHUB_STEP_SUMMARY"
