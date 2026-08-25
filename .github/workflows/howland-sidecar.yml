@@ -183,7 +183,9 @@ jobs:
     steps:
       - name: Start the openwork desktop build
         env:
-          # Needs contents:write on the openwork fork — the same PAT the release workflows use.
+          # Dispatching another repo's workflow needs ACTIONS:write on that repo —
+          # contents:write does not grant it (a fine-grained PAT scopes them separately, and
+          # the publish-side write the release workflows use proves nothing about this).
           GH_TOKEN: ${{ secrets.RELEASES_PAT }}
         run: |
           set -euo pipefail
