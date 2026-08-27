@@ -113,7 +113,7 @@ drift — and disabling is per-repo state, so any *new* workflow file arrives `a
 1. **Real, uniform installers everywhere.** Every installable artifact on BOTH products gets a real
    platform-native installer, and the two products' install experiences stay uniform with each other.
    The tray-as-setup-exe pattern is retired. This supersedes the "writable app-data root" minimum
-   fix for Neptune's install-location blocker: fix the install root AND ship a real installer.
+   fix for Magpie's install-location blocker: fix the install root AND ship a real installer.
    Cross-product parity is a hard requirement — design the installer story once, apply it to both.
 2. **Windows code signing: unresolved, defer.** File-based .pfx is no longer issuable. Azure Trusted
    Signing may now have a path that does not require a 3-year-old org — determine this when setting
