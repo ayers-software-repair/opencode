@@ -1,7 +1,7 @@
 # WORKING — Howland sidecar fork (branch `howland-sidecar`)
 
 This fork exists only to publish Howland-branded opencode sidecar binaries as release
-`v1.17.11-howland`, consumed by openwork's `prepare-sidecar.mjs`.
+`v1.19.3-howland`, consumed by openwork's `prepare-sidecar.mjs`.
 
 ---
 

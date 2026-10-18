@@ -1,9 +1,9 @@
 # CLAUDE.md — the Howland opencode fork
 
 This is `anomalyco/opencode` forked (`upstream` remote). Two branches matter:
-- **`howland-sidecar`** — upstream v1.17.11 plus the Howland branding commit(s). The
+- **`howland-sidecar`** — upstream v1.19.3 plus the Howland branding commit(s). The
   `howland-sidecar.yml` workflow builds the six sidecar binaries from it and publishes fork
-  release `v1.17.11-howland`, stamping SOURCE-COMMIT.txt with the commit it built from
+  release `v1.19.3-howland`, stamping SOURCE-COMMIT.txt with the commit it built from
   (openwork's preflight refuses a sidecar whose commit does not match its pin).
 - **`dev`** — the fork default; carries only the SYNCED COPY of `howland-sidecar.yml`
   (dispatch reads the workflow list from the default branch). Any workflow edit lands on
