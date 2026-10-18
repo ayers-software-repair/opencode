@@ -93,7 +93,7 @@ const [store, setStore] = createStore<State>({
   themes: allThemes(),
   mode: "dark",
   lock: undefined,
-  active: "howland",
+  active: "opencode",
   ready: false,
 })
 
@@ -118,8 +118,8 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
         if (!lock && pick(kv.get("theme_mode")) !== undefined) kv.set("theme_mode", undefined)
         draft.mode = mode
         draft.lock = lock
-        const active = config.theme ?? kv.get("theme", "howland")
-        draft.active = typeof active === "string" ? active : "howland"
+        const active = config.theme ?? kv.get("theme", "opencode")
+        draft.active = typeof active === "string" ? active : "opencode"
         draft.ready = false
       }),
     )
@@ -140,7 +140,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
             }, {}),
           )
         })
-        .catch(() => setStore("active", "howland"))
+        .catch(() => setStore("active", "opencode"))
     }
 
     onMount(() => {
@@ -159,7 +159,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
           if (!colors.palette[0]) {
             if (hasResolvedSystemTheme) return
             setSystemTheme(undefined)
-            if (store.active === "system") setStore("active", "howland")
+            if (store.active === "system") setStore("active", "opencode")
             return
           }
           const next = store.lock ?? terminalMode(colors) ?? mode
@@ -174,7 +174,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
         .catch(() => {
           if (hasResolvedSystemTheme) return
           setSystemTheme(undefined)
-          if (store.active === "system") setStore("active", "howland")
+          if (store.active === "system") setStore("active", "opencode")
         })
     }
 
@@ -263,7 +263,7 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
         if (theme) return resolveTheme(theme, store.mode)
       }
 
-      return resolveTheme(store.themes.howland, store.mode)
+      return resolveTheme(store.themes.opencode, store.mode)
     })
 
     createEffect(() => renderer.setBackgroundColor(values().background))
