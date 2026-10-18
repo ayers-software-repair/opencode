@@ -1,7 +1,7 @@
 # Builds the Howland-branded opencode sidecar binaries the openwork fork's desktop release
-# consumes, and publishes them as release v1.17.11-howland ON THIS FORK. The openwork fork's
+# consumes, and publishes them as release v1.19.3-howland ON THIS FORK. The openwork fork's
 # release.yml points OPENCODE_GITHUB_REPO here and constants.json pins opencodeVersion
-# v1.17.11-howland, so prepare-sidecar.mjs fetches these six assets by their upstream names.
+# v1.19.3-howland, so prepare-sidecar.mjs fetches these six assets by their upstream names.
 #
 # ORDER MATTERS: this release must exist BEFORE any Howland desktop build runs — the sidecar
 # fetch hard-fails (exit 1) on a missing asset and one dead leg blocks the whole desktop
@@ -17,7 +17,7 @@
 #
 # The ref is HARDCODED to the branded branch on purpose: a free-form ref input with the
 # version pinned below would publish whatever was checked out — dev, hundreds of commits
-# newer — under the v1.17.11-howland tag, --clobber overwriting the good assets. The
+# newer — under the v1.19.3-howland tag, --clobber overwriting the good assets. The
 # version assertion after the build is the second lock on the same door.
 
 name: Howland Sidecar
@@ -49,20 +49,15 @@ jobs:
     env:
       # Script.version verbatim; the binaries self-report it and prepare-sidecar.mjs matches
       # it against constants.json, so it must equal the release tag minus the leading v.
-      OPENCODE_VERSION: 1.17.11-howland
+      OPENCODE_VERSION: 1.19.3-howland
     steps:
       - uses: actions/checkout@v7
         with:
           ref: howland-sidecar
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          # Must satisfy the root package.json packageManager pin (bun@1.3.14) — the Script
-          # module refuses to run outside ^that range.
-          bun-version: 1.3.14
-
-      - name: Install workspace dependencies
-        run: bun install
+      # Upstream's own setup: Bun at the root packageManager pin (the Script module refuses
+      # any other), Node for native install scripts, then `bun install`.
+      - uses: ./.github/actions/setup-bun
 
       # build.ts builds all 12 upstream targets; the six the desktop matrix consumes are
       # packaged below and the rest are discarded. No fork patch to the build script — zero
@@ -108,6 +103,11 @@ jobs:
           mkdir -p release
           # Exact upstream asset names, from openwork's prepare-sidecar.mjs opencodeAssetByTarget.
           # `*`, not `.`: Windows Expand-Archive is the consumer least tolerant of a ./ prefix.
+          # opencode's MIT LICENSE ships beside each binary; prepare-sidecar finds the binary by name.
+          for key in opencode-darwin-arm64 opencode-darwin-x64-baseline opencode-windows-x64-baseline \
+                     opencode-windows-arm64 opencode-linux-x64-baseline opencode-linux-arm64; do
+            cp ../../LICENSE "dist/$key/bin/LICENSE"
+          done
           for key in opencode-darwin-arm64 opencode-darwin-x64-baseline \
                      opencode-windows-x64-baseline opencode-windows-arm64; do
             ( cd "dist/$key/bin" && zip -qr "../../../release/$key.zip" -- * )
@@ -121,7 +121,7 @@ jobs:
 
       # Publishes on THIS fork (not howland-releases): sidecar assets are desktop-build
       # inputs, not user-facing downloads, so they stay off the one release train.
-      - name: Publish fork release v1.17.11-howland
+      - name: Publish fork release v1.19.3-howland
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -132,7 +132,7 @@ jobs:
           # string.
           NOTES="$RUNNER_TEMP/notes.md"
           {
-            echo "Howland-branded opencode sidecar binaries (upstream v1.17.11 + Howland TUI theme)."
+            echo "Howland-branded opencode sidecar binaries (upstream v1.19.3 + Howland branding)."
             echo "Consumed by the openwork fork's desktop release; not a user-facing download."
             echo "Upstream MIT license and notices retained."
             echo
