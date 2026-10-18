@@ -1,9 +1,9 @@
 # CLAUDE.md — the Howland opencode fork
 
 This is `anomalyco/opencode` forked (`upstream` remote). Two branches matter:
-- **`howland-sidecar`** — upstream v1.17.11 plus the Howland branding commit(s). The
+- **`howland-sidecar`** — upstream v1.19.3 plus the Howland branding commit(s). The
   `howland-sidecar.yml` workflow builds the six sidecar binaries from it and publishes fork
-  release `v1.17.11-howland`, stamping SOURCE-COMMIT.txt with the commit it built from
+  release `v1.19.3-howland`, stamping SOURCE-COMMIT.txt with the commit it built from
   (openwork's preflight refuses a sidecar whose commit does not match its pin).
 - **`dev`** — the fork default; carries only the SYNCED COPY of `howland-sidecar.yml`
   (dispatch reads the workflow list from the default branch). Any workflow edit lands on
@@ -16,7 +16,10 @@ chains the openwork desktop build (opt-out via the `chain` input).
 Hard rules:
 - **Never rename or patch upstream internals** — branding is additive commits on the
   branded branch only (TUI theme, name where it surfaces). A previous fork renamed
-  internals and could never take upstream updates again.
+  internals and could never take upstream updates again. The branch follows upstream by
+  rebasing its commits onto each release the fork adopts (D1598). The only source files it
+  may edit are listed once, in the workspace `../CLAUDE.md` (D1597, D1604); this file carries
+  no list of its own.
 - Bun, pinned by the root `packageManager` (the pre-push hook enforces it); `bun typecheck`
   runs from package dirs, never the repo root. Run `bun install` after switching branches
   or the hook fails on stale node_modules.
@@ -28,19 +31,3 @@ Hard rules:
 The governing queue, standing rulings and cross-repo record live in
 `../howland/WORKING.md` (the howland maintainer session + the coordinator,
 ayers-electronics). Report findings and completions there, not here.
-
-## Tooling — the global rules apply here (see ~/.claude/CLAUDE.md)
-
-Two laws from the root file bind every session in this repo. They are not repeated in full here on
-purpose: a long CLAUDE.md gets ignored in the middle, so this is a pointer, not a copy.
-
-1. **CONSULT THE DOCS, NEVER GUESS.** Any claim about a library, framework, SDK or platform gets
-   read from the real documentation first — `context7` for libraries, `microsoft-docs` for
-   .NET/Windows/Azure. Cite the source. Never from memory.
-2. **Reach for the tool before the generic one.** Symbols: the LSP for TypeScript, JavaScript,
-   Python, Go and C/C++, in a seat; grep + Read for C# (no C# server is installed: csharp-lsp died
-   on every call and serena was removed, both 2026-09-10). A real browser is the cached chromium
-   from Bash: `~/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome --headless=new
-   --no-sandbox --mute-audio`; the playwright plugin is removed.
-
-This repo is **TypeScript** — `typescript-language-server` applies.
