@@ -2472,7 +2472,7 @@ noLLMServer.instance(
 
 for (const structured of [false, true]) {
   it.instance(
-    `one-step ${structured ? "structured" : "text"} request keeps the final instruction without assistant prefill`,
+    `one-step ${structured ? "structured" : "text"} request stays bounded without progress narration or assistant prefill`,
     () =>
       Effect.gen(function* () {
         const { llm } = yield* useServerConfig((url) => ({
@@ -2490,7 +2490,10 @@ for (const structured of [false, true]) {
         const sessions = yield* Session.Service
         const chat = yield* sessions.create({
           title: "Pinned",
-          permission: [{ permission: "*", pattern: "*", action: "deny" }],
+          permission: [
+            { permission: "*", pattern: "*", action: "deny" },
+            ...(structured ? [{ permission: "StructuredOutput", pattern: "*", action: "allow" as const }] : []),
+          ],
         })
         yield* prompt.prompt({
           sessionID: chat.id,
@@ -2517,7 +2520,7 @@ for (const structured of [false, true]) {
         const messages = body.messages
         if (!Array.isArray(messages)) throw new Error("Expected captured request messages")
         expect(messages.at(-1)).toMatchObject({ role: "user", content: "Finish this turn" })
-        expect(messages).toEqual(
+        expect(messages).not.toEqual(
           expect.arrayContaining([{ role: "system", content: expect.stringContaining(MAX_STEPS_PROMPT) }]),
         )
         expect(body.tool_choice).toBe(structured ? "required" : undefined)
@@ -2529,3 +2532,40 @@ for (const structured of [false, true]) {
       }),
   )
 }
+
+it.instance("keeps the exact progress summary on a configured second step without assistant prefill", () =>
+  Effect.gen(function* () {
+    const { llm } = yield* useServerConfig((url) => ({
+      ...providerCfg(url),
+      agent: { demo: { mode: "primary", model: "test/test-model", steps: 2, permission: { "*": "deny" } } },
+    }))
+    const prompt = yield* SessionPrompt.Service
+    const sessions = yield* Session.Service
+    const chat = yield* sessions.create({
+      title: "Pinned",
+      permission: [{ permission: "*", pattern: "*", action: "deny" }],
+    })
+    yield* prompt.prompt({
+      sessionID: chat.id,
+      agent: "demo",
+      model: ref,
+      noReply: true,
+      parts: [{ type: "text", text: "Finish at the limit" }],
+    })
+    yield* llm.tool("first", { value: "first" })
+    yield* llm.text("Done")
+    const result = yield* prompt.loop({ sessionID: chat.id })
+    const hits = yield* llm.hits
+    expect(hits).toHaveLength(2)
+    const messages = hits[1]!.body.messages
+    if (!Array.isArray(messages)) throw new Error("Expected captured request messages")
+    expect(messages.at(-1)?.role).not.toBe("assistant")
+    expect(messages).toEqual(
+      expect.arrayContaining([{ role: "system", content: expect.stringContaining(MAX_STEPS_PROMPT) }]),
+    )
+    expect(hits[1]!.body.tools ?? []).toEqual([])
+    expect(hits[1]!.body.tool_choice).toBeUndefined()
+    expect(result.info.role).toBe("assistant")
+    if (result.info.role === "assistant") expect(result.info.error).toBeUndefined()
+  }),
+)
