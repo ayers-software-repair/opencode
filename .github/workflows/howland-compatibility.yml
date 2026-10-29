@@ -1,0 +1,37 @@
+name: Howland compatibility
+on:
+  pull_request:
+    branches: [howland-sidecar]
+  push:
+    branches: [howland-sidecar]
+permissions:
+  contents: read
+concurrency:
+  group: howland-compatibility-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compatibility:
+    if: github.repository == 'ayers-software-repair/opencode'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [core, opencode]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-bun
+        with:
+          install-flags: --frozen-lockfile
+      - name: Type check the package
+        working-directory: packages/${{ matrix.package }}
+        run: bun typecheck
+      - name: Exercise the actual request construction and lifecycle
+        working-directory: packages/${{ matrix.package }}
+        shell: bash
+        run: |
+          if [[ "${{ matrix.package }}" = core ]]; then
+            bun test test/session-runner.test.ts --timeout 30000
+          else
+            bun test test/session/prompt.test.ts --timeout 30000
+          fi

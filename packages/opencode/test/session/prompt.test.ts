@@ -35,6 +35,7 @@ import { SessionSummary } from "../../src/session/summary"
 import { Instruction } from "../../src/session/instruction"
 import { SessionProcessor } from "../../src/session/processor"
 import { SessionPrompt } from "../../src/session/prompt"
+import { MAX_STEPS_PROMPT } from "@opencode-ai/core/session/runner/max-steps"
 import { SessionRevert } from "../../src/session/revert"
 import { SessionRunState } from "../../src/session/run-state"
 import { MessageID, PartID, SessionID } from "../../src/session/schema"
@@ -2468,3 +2469,55 @@ noLLMServer.instance(
     }),
   30_000,
 )
+
+for (const structured of [false, true]) {
+  it.instance(`one-step ${structured ? "structured" : "text"} request keeps the final instruction without assistant prefill`, () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig((url) => ({
+        ...providerCfg(url),
+        agent: {
+          demo: {
+            mode: "primary",
+            model: "test/test-model",
+            steps: 1,
+            permission: { "*": "deny" },
+          },
+        },
+      }))
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const chat = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "deny" }],
+      })
+      yield* prompt.prompt({
+        sessionID: chat.id,
+        agent: "demo",
+        model: ref,
+        noReply: true,
+        parts: [{ type: "text", text: "Finish this turn" }],
+        ...(structured
+          ? { format: { type: "json_schema" as const, schema: { type: "object", properties: { answer: { type: "number" } }, required: ["answer"] }, retryCount: 0 } }
+          : {}),
+      })
+      if (structured) yield* llm.tool("StructuredOutput", { answer: 4 })
+      else yield* llm.text("Done")
+      const result = yield* prompt.loop({ sessionID: chat.id })
+      const hits = yield* llm.hits
+      expect(hits).toHaveLength(1)
+      const body = hits[0]!.body
+      const messages = body.messages
+      if (!Array.isArray(messages)) throw new Error("Expected captured request messages")
+      expect(messages.at(-1)).toMatchObject({ role: "user", content: "Finish this turn" })
+      expect(messages).toEqual(
+        expect.arrayContaining([{ role: "system", content: expect.stringContaining(MAX_STEPS_PROMPT) }]),
+      )
+      expect(body.tool_choice).toBe(structured ? "required" : undefined)
+      const tools = body.tools ?? []
+      if (!Array.isArray(tools)) throw new Error("Expected captured request tools")
+      expect(tools.map((tool) => tool.function.name)).toEqual(structured ? ["StructuredOutput"] : [])
+      expect(result.info.role).toBe("assistant")
+      if (result.info.role === "assistant") expect(result.info.error).toBeUndefined()
+    }),
+  )
+}
