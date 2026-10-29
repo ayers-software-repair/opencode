@@ -2470,102 +2470,76 @@ noLLMServer.instance(
   30_000,
 )
 
-for (const structured of [false, true]) {
-  it.instance(
-    `one-step ${structured ? "structured" : "text"} request stays bounded without progress narration or assistant prefill`,
-    () =>
-      Effect.gen(function* () {
-        const { llm } = yield* useServerConfig((url) => ({
-          ...providerCfg(url),
-          agent: {
-            demo: {
-              mode: "primary",
-              model: "test/test-model",
-              steps: 1,
-              permission: { "*": "deny" },
+for (const steps of [1, 2]) {
+  for (const structured of [false, true]) {
+    it.instance(
+      `cap-${steps} ${structured ? "structured" : "text"} request preserves its final instruction without assistant prefill`,
+      () =>
+        Effect.gen(function* () {
+          const { llm } = yield* useServerConfig((url) => ({
+            ...providerCfg(url),
+            agent: {
+              demo: {
+                mode: "primary",
+                model: "test/test-model",
+                steps,
+                permission: { "*": "deny" },
+              },
             },
-          },
-        }))
-        const prompt = yield* SessionPrompt.Service
-        const sessions = yield* Session.Service
-        const chat = yield* sessions.create({
-          title: "Pinned",
-          permission: [
-            { permission: "*", pattern: "*", action: "deny" },
-            ...(structured ? [{ permission: "StructuredOutput", pattern: "*", action: "allow" as const }] : []),
-          ],
-        })
-        yield* prompt.prompt({
-          sessionID: chat.id,
-          agent: "demo",
-          model: ref,
-          noReply: true,
-          parts: [{ type: "text", text: "Finish this turn" }],
-          ...(structured
-            ? {
-                format: new SessionV1.OutputFormatJsonSchema({
-                  type: "json_schema",
-                  schema: { type: "object", properties: { answer: { type: "number" } }, required: ["answer"] },
-                  retryCount: 0,
-                }),
-              }
-            : {}),
-        })
-        if (structured) yield* llm.tool("StructuredOutput", { answer: 4 })
-        else yield* llm.text("Done")
-        const result = yield* prompt.loop({ sessionID: chat.id })
-        const hits = yield* llm.hits
-        expect(hits).toHaveLength(1)
-        const body = hits[0]!.body
-        const messages = body.messages
-        if (!Array.isArray(messages)) throw new Error("Expected captured request messages")
-        expect(messages.at(-1)).toMatchObject({ role: "user", content: "Finish this turn" })
-        expect(messages).not.toEqual(
-          expect.arrayContaining([{ role: "system", content: expect.stringContaining(MAX_STEPS_PROMPT) }]),
-        )
-        expect(body.tool_choice).toBe(structured ? "required" : undefined)
-        const tools = body.tools ?? []
-        if (!Array.isArray(tools)) throw new Error("Expected captured request tools")
-        expect(tools.map((tool) => tool.function.name)).toEqual(structured ? ["StructuredOutput"] : [])
-        expect(result.info.role).toBe("assistant")
-        if (result.info.role === "assistant") expect(result.info.error).toBeUndefined()
-      }),
-  )
-}
-
-it.instance("keeps the exact progress summary on a configured second step without assistant prefill", () =>
-  Effect.gen(function* () {
-    const { llm } = yield* useServerConfig((url) => ({
-      ...providerCfg(url),
-      agent: { demo: { mode: "primary", model: "test/test-model", steps: 2, permission: { "*": "deny" } } },
-    }))
-    const prompt = yield* SessionPrompt.Service
-    const sessions = yield* Session.Service
-    const chat = yield* sessions.create({
-      title: "Pinned",
-      permission: [{ permission: "*", pattern: "*", action: "deny" }],
-    })
-    yield* prompt.prompt({
-      sessionID: chat.id,
-      agent: "demo",
-      model: ref,
-      noReply: true,
-      parts: [{ type: "text", text: "Finish at the limit" }],
-    })
-    yield* llm.tool("first", { value: "first" })
-    yield* llm.text("Done")
-    const result = yield* prompt.loop({ sessionID: chat.id })
-    const hits = yield* llm.hits
-    expect(hits).toHaveLength(2)
-    const messages = hits[1]!.body.messages
-    if (!Array.isArray(messages)) throw new Error("Expected captured request messages")
-    expect(messages.at(-1)?.role).not.toBe("assistant")
-    expect(messages).toEqual(
-      expect.arrayContaining([{ role: "system", content: expect.stringContaining(MAX_STEPS_PROMPT) }]),
+          }))
+          const prompt = yield* SessionPrompt.Service
+          const sessions = yield* Session.Service
+          const chat = yield* sessions.create({
+            title: "Pinned",
+            permission: [
+              { permission: "*", pattern: "*", action: "deny" },
+              ...(structured ? [{ permission: "StructuredOutput", pattern: "*", action: "allow" as const }] : []),
+            ],
+          })
+          yield* prompt.prompt({
+            sessionID: chat.id,
+            agent: "demo",
+            model: ref,
+            noReply: true,
+            parts: [{ type: "text", text: "Finish this turn" }],
+            ...(structured
+              ? {
+                  format: new SessionV1.OutputFormatJsonSchema({
+                    type: "json_schema",
+                    schema: { type: "object", properties: { answer: { type: "number" } }, required: ["answer"] },
+                    retryCount: 0,
+                  }),
+                }
+              : {}),
+          })
+          if (steps === 2) yield* llm.tool("first", { value: "first" })
+          if (structured) yield* llm.tool("StructuredOutput", { answer: 4 })
+          else yield* llm.text("Done")
+          const result = yield* prompt.loop({ sessionID: chat.id })
+          const hits = yield* llm.hits
+          expect(hits).toHaveLength(steps)
+          const body = hits[steps - 1]!.body
+          const messages = body.messages
+          if (!Array.isArray(messages)) throw new Error("Expected captured request messages")
+          expect(messages.at(-1)?.role).not.toBe("assistant")
+          const finalInstruction = expect.arrayContaining([
+            { role: "system", content: expect.stringContaining(MAX_STEPS_PROMPT) },
+          ])
+          if (steps === 2) expect(messages).toEqual(finalInstruction)
+          else {
+            expect(messages.at(-1)).toMatchObject({ role: "user", content: "Finish this turn" })
+            expect(messages).not.toEqual(finalInstruction)
+          }
+          expect(body.tool_choice).toBe(structured ? "required" : undefined)
+          const tools = body.tools ?? []
+          if (!Array.isArray(tools)) throw new Error("Expected captured request tools")
+          expect(tools.map((tool) => tool.function.name)).toEqual(structured ? ["StructuredOutput"] : [])
+          expect(result.info.role).toBe("assistant")
+          if (result.info.role === "assistant") {
+            expect(result.info.error).toBeUndefined()
+            if (structured) expect(result.info.structured).toEqual({ answer: 4 })
+          }
+        }),
     )
-    expect(hits[1]!.body.tools ?? []).toEqual([])
-    expect(hits[1]!.body.tool_choice).toBeUndefined()
-    expect(result.info.role).toBe("assistant")
-    if (result.info.role === "assistant") expect(result.info.error).toBeUndefined()
-  }),
-)
+  }
+}
