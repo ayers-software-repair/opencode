@@ -3,7 +3,6 @@ import {
   LLMClient,
   LLMError,
   LLMEvent,
-  Message,
   SystemPart,
   isContextOverflowFailure,
   type ProviderErrorEvent,
@@ -214,10 +213,10 @@ const layer = Layer.effect(
           },
         },
         providerOptions: { openai: { promptCacheKey } },
-        system: [agent.info?.system, system.baseline]
+        system: [agent.info?.system, system.baseline, ...(isLastStep && currentStep > 1 ? [MAX_STEPS_PROMPT] : [])]
           .filter((part): part is string => part !== undefined && part.length > 0)
           .map(SystemPart.make),
-        messages: [...toLLMMessages(context, model), ...(isLastStep ? [Message.assistant(MAX_STEPS_PROMPT)] : [])],
+        messages: toLLMMessages(context, model),
         tools: toolMaterialization?.definitions ?? [],
         toolChoice: isLastStep ? "none" : undefined,
       })

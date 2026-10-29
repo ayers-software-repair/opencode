@@ -34,6 +34,7 @@ import { SessionExecution } from "@opencode-ai/core/session/execution"
 import { SessionRunCoordinator } from "@opencode-ai/core/session/run-coordinator"
 import { SessionRunner } from "@opencode-ai/core/session/runner"
 import * as SessionRunnerLLM from "@opencode-ai/core/session/runner/llm"
+import { MAX_STEPS_PROMPT } from "@opencode-ai/core/session/runner/max-steps"
 import { SessionRunnerModel } from "@opencode-ai/core/session/runner/model"
 import { ToolRegistry } from "@opencode-ai/core/tool/registry"
 import { ApplicationTools } from "@opencode-ai/core/tool/application-tools"
@@ -3096,16 +3097,38 @@ describe("SessionRunnerLLM", () => {
       expect(requests[0]?.toolChoice).toBeUndefined()
       expect(requests[1]?.toolChoice).toMatchObject({ type: "none" })
       expect(requests[1]?.tools).toEqual([])
-      expect(requests[1]?.messages.at(-1)).toMatchObject({
-        role: "assistant",
-        content: [{ type: "text", text: expect.stringContaining("MAXIMUM STEPS REACHED") }],
-      })
+      expect(requests[1]?.messages.at(-1)?.role).not.toBe("assistant")
+      expect(requests[1]?.system).toEqual(expect.arrayContaining([{ type: "text", text: MAX_STEPS_PROMPT }]))
       expect(executions).toEqual(["done"])
       expect(yield* session.context(sessionID)).toMatchObject([
         { type: "user", text: "Finish at the limit" },
         { type: "assistant", content: [{ type: "tool", id: "call-terminal", state: { status: "completed" } }] },
         { type: "assistant", content: [{ type: "tool", id: "call-forbidden", state: { status: "error" } }] },
       ])
+    }),
+  )
+
+  it.effect("keeps a one-step agent bounded without progress narration or assistant prefill", () =>
+    Effect.gen(function* () {
+      yield* setup
+      const agents = yield* AgentV2.Service
+      yield* agents.transform((editor) =>
+        editor.update(AgentV2.ID.make("build"), (agent) => {
+          agent.steps = 1
+        }),
+      )
+      const session = yield* SessionV2.Service
+      yield* session.prompt({ sessionID, prompt: Prompt.make({ text: "Finish this turn" }), resume: false })
+      requests.length = 0
+      executions.length = 0
+      response = fragmentFixture("text", "text-one-step", ["Done"]).completeEvents
+      yield* session.resume(sessionID)
+      expect(requests).toHaveLength(1)
+      expect(requests[0]?.tools).toEqual([])
+      expect(requests[0]?.toolChoice).toMatchObject({ type: "none" })
+      expect(requests[0]?.messages.at(-1)?.role).toBe("user")
+      expect(requests[0]?.system).not.toEqual(expect.arrayContaining([{ type: "text", text: MAX_STEPS_PROMPT }]))
+      expect(executions).toEqual([])
     }),
   )
 
