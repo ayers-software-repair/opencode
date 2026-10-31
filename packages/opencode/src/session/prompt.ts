@@ -1508,7 +1508,7 @@ export const PromptInput = Schema.Struct({
   agent: Schema.optional(Schema.String),
   noReply: Schema.optional(Schema.Boolean),
   singleGeneration: Schema.optional(Schema.Boolean).annotate({
-    description: "Allow at most one provider dispatch in this prompt run, including retries and continuations.",
+    description: "Limit the main agent loop to one provider dispatch, including retries. Requires an idle, isolated session with auxiliary generation disabled.",
   }),
   tools: Schema.optional(Schema.Record(Schema.String, Schema.Boolean)).annotate({
     description:
