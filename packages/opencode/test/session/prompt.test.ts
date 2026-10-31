@@ -2543,3 +2543,49 @@ for (const steps of [1, 2]) {
     )
   }
 }
+
+for (const first of ["unknown", "retry", "stop"] as const) {
+  it.instance(`singleGeneration blocks ${first} redispatch without consuming the next turn`, () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({
+        title: "Pinned",
+        permission: [{ permission: "*", pattern: "*", action: "deny" }],
+      })
+      if (first === "unknown") yield* llm.push(reply().text("Safe prefix"))
+      else if (first === "retry") yield* llm.error(503, { error: { message: "Service unavailable" } })
+      else yield* llm.text("Accepted")
+      yield* llm.text("Next turn")
+      const result = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        singleGeneration: true,
+        model: ref,
+        parts: [{ type: "text", text: "First" }],
+      })
+      expect(yield* llm.calls).toBe(1)
+      expect(result.info.role).toBe("assistant")
+      if (result.info.role === "assistant") {
+        if (first === "stop") expect(result.info.finish).toBe("stop")
+        else expect(result.info.error).toBeDefined()
+      }
+      if (first === "unknown") {
+        const history = yield* sessions.messages({ sessionID: session.id })
+        expect(
+          history.some((message) => message.parts.some((part) => part.type === "text" && part.text === "Safe prefix")),
+        ).toBe(true)
+      }
+      const next = yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        singleGeneration: true,
+        model: ref,
+        parts: [{ type: "text", text: "Second" }],
+      })
+      expect(yield* llm.calls).toBe(2)
+      expect(next.parts.some((part) => part.type === "text" && part.text === "Next turn")).toBe(true)
+    }),
+  )
+}

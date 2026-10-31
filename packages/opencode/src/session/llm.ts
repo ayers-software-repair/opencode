@@ -44,6 +44,7 @@ export type StreamInput = {
   small?: boolean
   tools: Record<string, Tool>
   retries?: number
+  beforeDispatch?: () => void
   toolChoice?: "auto" | "required" | "none"
 }
 
@@ -83,6 +84,7 @@ const live: Layer.Layer<
     const flags = yield* RuntimeFlags.Service
 
     const run = Effect.fn("LLM.run")(function* (input: StreamRequest) {
+      input.beforeDispatch?.()
       yield* Effect.logInfo("stream", {
         providerID: input.model.providerID,
         modelID: input.model.id,
@@ -320,7 +322,7 @@ const live: Layer.Layer<
           maxOutputTokens: prepared.params.maxOutputTokens,
           abortSignal: input.abort,
           headers: prepared.headers,
-          maxRetries: input.retries ?? 0,
+          maxRetries: input.beforeDispatch ? 0 : (input.retries ?? 0),
           messages: prepared.messages,
           model: wrapLanguageModel({
             model: language,
