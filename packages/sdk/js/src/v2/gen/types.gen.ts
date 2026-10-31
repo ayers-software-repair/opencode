@@ -9820,6 +9820,7 @@ export type SessionPromptData = {
     }
     agent?: string
     noReply?: boolean
+    singleGeneration?: boolean
     tools?: {
       [key: string]: boolean
     }
@@ -10167,6 +10168,7 @@ export type SessionPromptAsyncData = {
     }
     agent?: string
     noReply?: boolean
+    singleGeneration?: boolean
     tools?: {
       [key: string]: boolean
     }
