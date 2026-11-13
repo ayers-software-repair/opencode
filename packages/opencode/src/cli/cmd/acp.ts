@@ -6,7 +6,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import { withNetworkOptions, resolveNetworkOptions, type NetworkOptions } from "../network"
 import { ACPProfile } from "@/acp/profile"
 
-export const AcpCommand = effectCmd<NetworkOptions & { cwd: string; attach?: string }, void>({
+export const AcpCommand = effectCmd<NetworkOptions & { cwd: string; attach?: string; session?: string }, void>({
   command: "acp",
   describe: "start ACP (Agent Client Protocol) server",
   instance: (args) => args.attach === undefined,
@@ -21,14 +21,22 @@ export const AcpCommand = effectCmd<NetworkOptions & { cwd: string; attach?: str
         describe: "connect to an existing product host instead of starting a server",
         type: "string",
       })
+      .option("session", {
+        describe: "canonical host session for --attach",
+        type: "string",
+      })
   },
   handler: Effect.fn("Cli.acp")(function* (args) {
     const { ACP } = yield* Effect.promise(() => import("@/acp/agent"))
     ACPProfile.mark("cli.acp.handler")
     process.env.OPENCODE_CLIENT = "acp"
 
+    const session = args.session
     const connection = yield* Effect.gen(function* () {
       if (args.attach !== undefined) {
+        if (!session || !/^ses_[a-zA-Z0-9]+$/.test(session)) {
+          return yield* fail("--attach requires --session with a canonical host session ID")
+        }
         const url = URL.canParse(args.attach) ? new URL(args.attach) : undefined
         if (
           !url ||
@@ -49,13 +57,20 @@ export const AcpCommand = effectCmd<NetworkOptions & { cwd: string; attach?: str
           baseUrl: url.href,
           headers: { Authorization: `Bearer ${token}` },
           fetch: Object.assign(
-            (request: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) =>
-              fetch(request, { ...init, redirect: "error" }),
+            (request: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+              const target = new URL(request instanceof Request ? request.url : request)
+              if (target.pathname === `${url.pathname.replace(/\/$/, "")}/global/event`) {
+                target.searchParams.set("sessionId", session)
+                request = request instanceof Request ? new Request(target, request) : target
+              }
+              return fetch(request, { ...init, redirect: "error" })
+            },
             { preconnect: fetch.preconnect },
           ),
         }
       }
 
+      if (session !== undefined) return yield* fail("--session requires --attach")
       const { Server } = yield* Effect.promise(() => import("@/server/server"))
       const opts = yield* resolveNetworkOptions(args)
       const server = yield* Effect.promise(() => ACPProfile.measure("cli.acp.server.listen", () => Server.listen(opts)))
@@ -90,7 +105,7 @@ export const AcpCommand = effectCmd<NetworkOptions & { cwd: string; attach?: str
     })
 
     const stream = ndJsonStream(input, output)
-    const agent = ACP.init({ sdk, attached: args.attach !== undefined })
+    const agent = ACP.init({ sdk, attached: args.attach !== undefined, attachedSessionID: session })
 
     new AgentSideConnection((conn) => {
       ACPProfile.mark("cli.acp.connection.create")

@@ -75,6 +75,7 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/AC
 export function make(input: {
   sdk: OpencodeClient
   attached?: boolean
+  attachedSessionID?: string
   connection?: ServiceConnection
   directory?: Directory.Interface
   session?: ACPSession.Interface
@@ -124,8 +125,7 @@ export function make(input: {
         },
         sessionCapabilities: {
           close: {},
-          fork: {},
-          list: {},
+          ...(input.attachedSessionID ? {} : { fork: {}, list: {} }),
           resume: {},
         },
       },
@@ -162,6 +162,7 @@ export function make(input: {
   })
 
   const newSession = Effect.fn("ACP.newSession")(function* (params: NewSessionRequest) {
+    if (input.attachedSessionID) return yield* new ACPError.UnsupportedOperationError({ method: "newSession" })
     if (input.attached && params.mcpServers?.length) {
       return yield* new ACPError.UnsupportedOperationError({ method: "editor MCP registration" })
     }
@@ -213,6 +214,9 @@ export function make(input: {
   })
 
   const loadSession = Effect.fn("ACP.loadSession")(function* (params: LoadSessionRequest) {
+    if (input.attachedSessionID && params.sessionId !== input.attachedSessionID) {
+      return yield* new ACPError.SessionNotFoundError({ sessionId: params.sessionId })
+    }
     if (input.attached && params.mcpServers?.length) {
       return yield* new ACPError.UnsupportedOperationError({ method: "editor MCP registration" })
     }
@@ -254,6 +258,7 @@ export function make(input: {
   })
 
   const listSessions = Effect.fn("ACP.listSessions")(function* (params: ListSessionsRequest) {
+    if (input.attachedSessionID) return yield* new ACPError.UnsupportedOperationError({ method: "listSessions" })
     const cursor = params.cursor ? Number(params.cursor) : undefined
     const limit = 100
     const sessions = yield* request(
@@ -300,6 +305,9 @@ export function make(input: {
   })
 
   const resumeSession = Effect.fn("ACP.resumeSession")(function* (params: ResumeSessionRequest) {
+    if (input.attachedSessionID && params.sessionId !== input.attachedSessionID) {
+      return yield* new ACPError.SessionNotFoundError({ sessionId: params.sessionId })
+    }
     if (input.attached && params.mcpServers?.length) {
       return yield* new ACPError.UnsupportedOperationError({ method: "editor MCP registration" })
     }
@@ -370,6 +378,7 @@ export function make(input: {
   })
 
   const forkSession = Effect.fn("ACP.forkSession")(function* (params: ForkSessionRequest) {
+    if (input.attachedSessionID) return yield* new ACPError.UnsupportedOperationError({ method: "forkSession" })
     if (input.attached && params.mcpServers?.length) {
       return yield* new ACPError.UnsupportedOperationError({ method: "editor MCP registration" })
     }
