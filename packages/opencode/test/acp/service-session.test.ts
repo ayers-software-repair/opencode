@@ -193,6 +193,7 @@ describe("ACP service sessions", () => {
   const makeService = (
     messages: readonly { info: unknown; parts: readonly unknown[] }[] = [],
     options?: {
+      attached?: boolean
       abort?: (input: { sessionID: string }) => Promise<{ data: boolean }>
       get?: () => Promise<{
         data: {
@@ -334,7 +335,7 @@ describe("ACP service sessions", () => {
     })
 
     return {
-      service: ACPService.make({ sdk, connection, usage }),
+      service: ACPService.make({ sdk, connection, usage, attached: options?.attached }),
       updates,
       mcpAdds,
       aborts,
@@ -688,6 +689,14 @@ describe("ACP service sessions", () => {
         .map((item) => item.update)
         .filter((item) => item.sessionUpdate === "user_message_chunk" || item.sessionUpdate === "agent_message_chunk"),
     ).toEqual([])
+  })
+
+  it("detaches an editor without aborting the shared host session", async () => {
+    const { service, aborts } = makeService([], { attached: true })
+    const created = await Effect.runPromise(service.newSession({ cwd: "/workspace", mcpServers: [] }))
+
+    expect(await Effect.runPromise(service.closeSession({ sessionId: created.sessionId }))).toEqual({})
+    expect(aborts).toEqual([])
   })
 
   it("closes local ACP state and aborts the backing session best-effort", async () => {

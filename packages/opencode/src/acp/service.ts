@@ -74,6 +74,7 @@ export class Service extends Context.Service<Service, Interface>()("@opencode/AC
 
 export function make(input: {
   sdk: OpencodeClient
+  attached?: boolean
   connection?: ServiceConnection
   directory?: Directory.Interface
   session?: ACPSession.Interface
@@ -85,7 +86,7 @@ export function make(input: {
   const registeredMcp = new Map<string, Set<string>>()
   const sessionSnapshots = new Map<string, Directory.Snapshot>()
   const events = input.connection
-    ? ACPEvent.start({ sdk: input.sdk, connection: input.connection, session })
+    ? ACPEvent.start({ sdk: input.sdk, connection: input.connection, session, attached: input.attached })
     : undefined
   if (events) input.eventSubscription?.(events)
   const runUntilIdle = <A>(sessionId: string, fn: () => Promise<A>) =>
@@ -114,8 +115,8 @@ export function make(input: {
       agentCapabilities: {
         loadSession: true,
         mcpCapabilities: {
-          http: true,
-          sse: true,
+          http: !input.attached,
+          sse: !input.attached,
         },
         promptCapabilities: {
           embeddedContext: true,
@@ -128,7 +129,7 @@ export function make(input: {
           resume: {},
         },
       },
-      authMethods: [authMethod],
+      authMethods: input.attached ? [] : [authMethod],
       agentInfo: {
         name: "OpenCode",
         version: InstallationVersion,
@@ -139,7 +140,7 @@ export function make(input: {
   })
 
   const authenticate = Effect.fn("ACP.authenticate")(function* (params: AuthenticateRequest) {
-    if (params.methodId !== AuthMethodID) {
+    if (input.attached || params.methodId !== AuthMethodID) {
       return yield* new ACPError.UnknownAuthMethodError({ methodId: params.methodId })
     }
     return {}
@@ -161,6 +162,9 @@ export function make(input: {
   })
 
   const newSession = Effect.fn("ACP.newSession")(function* (params: NewSessionRequest) {
+    if (input.attached && params.mcpServers?.length) {
+      return yield* new ACPError.UnsupportedOperationError({ method: "editor MCP registration" })
+    }
     const started = performance.now()
     const snapshot = yield* directorySnapshot(params.cwd)
     const selected = selectDefaultModel(snapshot)
@@ -209,6 +213,9 @@ export function make(input: {
   })
 
   const loadSession = Effect.fn("ACP.loadSession")(function* (params: LoadSessionRequest) {
+    if (input.attached && params.mcpServers?.length) {
+      return yield* new ACPError.UnsupportedOperationError({ method: "editor MCP registration" })
+    }
     const snapshot = yield* directorySnapshot(params.cwd)
     const backing = yield* request(
       () => input.sdk.session.get({ directory: params.cwd, sessionID: params.sessionId }, { throwOnError: true }),
@@ -293,6 +300,9 @@ export function make(input: {
   })
 
   const resumeSession = Effect.fn("ACP.resumeSession")(function* (params: ResumeSessionRequest) {
+    if (input.attached && params.mcpServers?.length) {
+      return yield* new ACPError.UnsupportedOperationError({ method: "editor MCP registration" })
+    }
     const snapshot = yield* directorySnapshot(params.cwd)
     const backing = yield* request(
       () => input.sdk.session.get({ directory: params.cwd, sessionID: params.sessionId }, { throwOnError: true }),
@@ -348,7 +358,7 @@ export function make(input: {
     const removed = yield* session.remove(params.sessionId)
     registeredMcp.delete(params.sessionId)
     sessionSnapshots.delete(params.sessionId)
-    if (!removed) return {}
+    if (!removed || input.attached) return {}
 
     yield* abortBackingSession(removed)
     return {}
@@ -360,6 +370,9 @@ export function make(input: {
   })
 
   const forkSession = Effect.fn("ACP.forkSession")(function* (params: ForkSessionRequest) {
+    if (input.attached && params.mcpServers?.length) {
+      return yield* new ACPError.UnsupportedOperationError({ method: "editor MCP registration" })
+    }
     const snapshot = yield* directorySnapshot(params.cwd)
     const forked = yield* request(
       () =>

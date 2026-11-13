@@ -2,9 +2,31 @@ import { describe, expect } from "bun:test"
 import type { AuthenticateResponse, InitializeResponse } from "@agentclientprotocol/sdk"
 import { Effect } from "effect"
 import { cliIt } from "../../lib/cli-process"
+import { createAcpClient as createJsonRpcAcpClient } from "./acp-test-client"
 import { createAcpClient, expectErrorCode, initialize } from "./helpers"
 
 describe("opencode acp initialize/auth subprocess", () => {
+  cliIt.live(
+    "attach initializes without loading invalid local project config",
+    ({ opencode }) =>
+      Effect.gen(function* () {
+        const env = {
+          OPENCODE_CONFIG_CONTENT: "{",
+          OPENCODE_ACP_ATTACH_TOKEN: "fixture-token",
+        }
+        const attached = yield* opencode.acp({
+          env,
+          extraArgs: ["--attach", "http://127.0.0.1:1"],
+        })
+        const initialized = yield* initialize(createJsonRpcAcpClient(attached)).pipe(Effect.timeout("15 seconds"))
+        expect(initialized.authMethods).toEqual([])
+
+        const standalone = yield* opencode.acp({ env })
+        expect(yield* Effect.promise(() => standalone.exited).pipe(Effect.timeout("15 seconds"))).not.toBe(0)
+      }),
+    60_000,
+  )
+
   cliIt.live(
     "initialize responds with capabilities",
     ({ opencode }) =>
