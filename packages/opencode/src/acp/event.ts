@@ -30,7 +30,7 @@ type GlobalEventStream = {
   stream: AsyncIterable<GlobalEventEnvelope>
 }
 
-export function start(input: { sdk: OpencodeClient; connection: Connection; session: ACPSession.Interface }) {
+export function start(input: { sdk: OpencodeClient; connection: Connection; session: ACPSession.Interface; attached?: boolean; eventFetch?: typeof fetch }) {
   const subscription = new Subscription(input)
   subscription.start()
   return subscription
@@ -40,7 +40,7 @@ export class Subscription {
   private readonly abort = new AbortController()
   private readonly shellSnapshots = new Map<string, string>()
   private readonly toolStarts = new Set<string>()
-  private readonly connectionWaiters = new Set<() => void>()
+  private readonly connectionWaiters = new Set<ReturnType<typeof signal>>()
   private readonly idleWaiters = new Map<string, Set<ReturnType<typeof signal>>>()
   private readonly permission: ACPPermission.Handler
   private connected = false
@@ -51,6 +51,8 @@ export class Subscription {
       sdk: OpencodeClient
       connection: Connection
       session: ACPSession.Interface
+      attached?: boolean
+      eventFetch?: typeof fetch
     },
   ) {
     this.permission = new ACPPermission.Handler(input)
@@ -67,8 +69,7 @@ export class Subscription {
   stop() {
     this.abort.abort()
     this.disconnected()
-    for (const resolve of this.connectionWaiters) resolve()
-    this.connectionWaiters.clear()
+    this.rejectConnectionWaiters()
   }
 
   async runUntilIdle<A>(sessionId: string, request: () => Promise<A>) {
@@ -96,7 +97,7 @@ export class Subscription {
         if (event.properties.status.type === "idle") this.idle(event.properties.sessionID)
         return
       case "permission.asked":
-        this.permission.handle(event)
+        if (!this.input.attached) this.permission.handle(event)
         return
       case "message.part.updated":
         return this.handlePartUpdated(event)
@@ -145,17 +146,31 @@ export class Subscription {
     while (!this.abort.signal.aborted) {
       await this.consume().catch(() => {})
       this.disconnected()
+      this.rejectConnectionWaiters()
       if (!this.abort.signal.aborted) await new Promise((resolve) => setTimeout(resolve, 1000))
     }
   }
 
   private async consume() {
+    const transport = this.input.eventFetch
     const events = (await this.input.sdk.global.event({
       signal: this.abort.signal,
+      ...(transport && {
+        sseMaxRetryAttempts: 0,
+        fetch: Object.assign(
+          async (request: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+            const response = await transport(request, init)
+            if (response.ok && response.body &&
+              response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() === "text/event-stream") {
+              this.markConnected()
+            }
+            return response
+          },
+          { preconnect: transport.preconnect },
+        ),
+      }),
     })) as GlobalEventStream
-    this.connected = true
-    for (const resolve of this.connectionWaiters) resolve()
-    this.connectionWaiters.clear()
+    if (!transport) this.markConnected()
 
     for await (const event of events.stream) {
       if (this.abort.signal.aborted) return
@@ -167,8 +182,23 @@ export class Subscription {
   private async waitUntilConnected() {
     while (!this.connected) {
       if (this.abort.signal.aborted) throw new Error("ACP event subscription stopped")
-      await new Promise<void>((resolve) => this.connectionWaiters.add(resolve))
+      const waiter = signal()
+      this.connectionWaiters.add(waiter)
+      await waiter.promise
     }
+  }
+
+  private markConnected() {
+    if (this.abort.signal.aborted) return
+    this.connected = true
+    for (const waiter of this.connectionWaiters) waiter.resolve()
+    this.connectionWaiters.clear()
+  }
+
+  private rejectConnectionWaiters() {
+    const error = new Error("ACP event stream unavailable")
+    for (const waiter of this.connectionWaiters) waiter.reject(error)
+    this.connectionWaiters.clear()
   }
 
   private disconnected() {

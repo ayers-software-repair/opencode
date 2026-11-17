@@ -193,6 +193,9 @@ describe("ACP service sessions", () => {
   const makeService = (
     messages: readonly { info: unknown; parts: readonly unknown[] }[] = [],
     options?: {
+      attached?: boolean
+      attachedSessionID?: string
+      onSdkCall?: () => void
       abort?: (input: { sessionID: string }) => Promise<{ data: boolean }>
       get?: () => Promise<{
         data: {
@@ -227,12 +230,16 @@ describe("ACP service sessions", () => {
       title: `Session ${index + 1}`,
       time: { created: index + 1, updated: index + 1 },
     }))
+    const call = <T>(fn: () => T) => {
+      options?.onSdkCall?.()
+      return fn()
+    }
     const sdk = {
       global: {
         event: (input?: { signal?: AbortSignal }) => Promise.resolve({ stream: events.stream(input?.signal) }),
       },
       config: {
-        providers: () => Promise.resolve({ data: { providers: [provider], default: { test: modelID } } }),
+        providers: () => call(() => Promise.resolve({ data: { providers: [provider], default: { test: modelID } } })),
         get: () => Promise.resolve({ data: {} }),
       },
       app: {
@@ -257,11 +264,11 @@ describe("ACP service sessions", () => {
       },
       session: {
         create: () => Promise.resolve({ data: { id: "ses_new" } }),
-        get: options?.get ?? (() => Promise.resolve({ data: { id: "ses_loaded" } })),
+        get: () => call(() => options?.get?.() ?? Promise.resolve({ data: { id: "ses_loaded" } })),
         list: (input: { directory?: string }) =>
-          Promise.resolve({
+          call(() => Promise.resolve({
             data: input.directory ? sessions.filter((session) => session.directory === input.directory) : sessions,
-          }),
+          })),
         messages: () => Promise.resolve({ data: messages }),
         prompt: async (input: { sessionID: string }) => {
           const response = await (options?.prompt?.(input) ??
@@ -334,7 +341,7 @@ describe("ACP service sessions", () => {
     })
 
     return {
-      service: ACPService.make({ sdk, connection, usage }),
+      service: ACPService.make({ sdk, connection, usage, attached: options?.attached, attachedSessionID: options?.attachedSessionID }),
       updates,
       mcpAdds,
       aborts,
@@ -688,6 +695,33 @@ describe("ACP service sessions", () => {
         .map((item) => item.update)
         .filter((item) => item.sessionUpdate === "user_message_chunk" || item.sessionUpdate === "agent_message_chunk"),
     ).toEqual([])
+  })
+
+  it("refuses other sessions and workspace-wide operations before contacting the host", async () => {
+    const calls: string[] = []
+    const { service } = makeService([], {
+      attached: true,
+      attachedSessionID: "ses_loaded",
+      onSdkCall: () => calls.push("sdk"),
+    })
+    const other = { cwd: "/workspace", sessionId: "ses_other", mcpServers: [] }
+    expect((await Effect.runPromise(Effect.flip(service.loadSession(other))))._tag).toBe("ACPSessionNotFoundError")
+    expect((await Effect.runPromise(Effect.flip(service.resumeSession(other))))._tag).toBe("ACPSessionNotFoundError")
+    const selected = { ...other, sessionId: "ses_loaded" }
+    expect((await Effect.runPromise(Effect.flip(service.newSession({ cwd: selected.cwd, mcpServers: [] }))))._tag).toBe("ACPUnsupportedOperationError")
+    expect((await Effect.runPromise(Effect.flip(service.listSessions({}))))._tag).toBe("ACPUnsupportedOperationError")
+    expect((await Effect.runPromise(Effect.flip(service.forkSession(selected))))._tag).toBe("ACPUnsupportedOperationError")
+    expect(calls).toEqual([])
+    await Effect.runPromise(service.loadSession(selected))
+    expect(calls.length).toBeGreaterThan(0)
+  })
+
+  it("detaches an editor without aborting the shared host session", async () => {
+    const { service, aborts } = makeService([], { attached: true })
+    const created = await Effect.runPromise(service.newSession({ cwd: "/workspace", mcpServers: [] }))
+
+    expect(await Effect.runPromise(service.closeSession({ sessionId: created.sessionId }))).toEqual({})
+    expect(aborts).toEqual([])
   })
 
   it("closes local ACP state and aborts the backing session best-effort", async () => {
