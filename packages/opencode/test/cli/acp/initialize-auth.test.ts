@@ -31,6 +31,7 @@ describe("opencode acp initialize/auth subprocess", () => {
           OPENCODE_ACP_ATTACH_TOKEN: "fixture-token",
         }
         const observed = Promise.withResolvers<{ path: string; authorization: string | null }>()
+        const metadata = new Map<string, string | null>()
         const host = yield* Effect.acquireRelease(
           Effect.sync(() =>
             Bun.serve({
@@ -38,6 +39,14 @@ describe("opencode acp initialize/auth subprocess", () => {
               port: 0,
               fetch(request) {
                 const url = new URL(request.url)
+                const path = url.pathname.replace("/workspace/test/opencode", "")
+                if (path === "/session/ses_fixture") return Response.json({ id: "ses_fixture" })
+                if (path === "/session/ses_fixture/message") return Response.json([])
+                if (["/config/providers", "/config", "/agent", "/command", "/skill"].includes(path)) {
+                  metadata.set(path, url.searchParams.get("sessionId"))
+                  if (path === "/config/providers") return Response.json({ providers: [], default: {} })
+                  return Response.json(path === "/config" ? {} : [])
+                }
                 observed.resolve({ path: url.pathname + url.search, authorization: request.headers.get("authorization") })
                 return new Response("", { headers: { "Content-Type": "text/event-stream" } })
               },
@@ -49,13 +58,24 @@ describe("opencode acp initialize/auth subprocess", () => {
           env,
           extraArgs: ["--attach", new URL("/workspace/test/opencode", host.url).href, "--session", "ses_fixture"],
         })
-        const initialized = yield* initialize(createJsonRpcAcpClient(attached)).pipe(Effect.timeout("15 seconds"))
+        const acp = createJsonRpcAcpClient(attached)
+        const initialized = yield* initialize(acp).pipe(Effect.timeout("15 seconds"))
         expect(initialized.authMethods).toEqual([])
         expect(initialized.agentCapabilities?.sessionCapabilities?.fork).toBeUndefined()
         expect(yield* Effect.promise(() => observed.promise).pipe(Effect.timeout("15 seconds"))).toEqual({
           path: "/workspace/test/opencode/global/event?sessionId=ses_fixture",
           authorization: "Bearer fixture-token",
         })
+
+        const loaded = yield* acp.request<{ configOptions?: unknown[] }>("session/load", {
+          sessionId: "ses_fixture",
+          cwd: "/workspace",
+          mcpServers: [],
+        }).pipe(Effect.timeout("15 seconds"))
+        expect(loaded.error).toBeUndefined()
+        expect(loaded.result).toBeDefined()
+        expect([...metadata.keys()].sort()).toEqual(["/agent", "/command", "/config", "/config/providers", "/skill"])
+        expect([...metadata.values()]).toEqual(Array(5).fill("ses_fixture"))
 
         const standalone = yield* opencode.acp({ env })
         expect(yield* Effect.promise(() => standalone.exited).pipe(Effect.timeout("15 seconds"))).not.toBe(0)

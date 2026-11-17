@@ -53,13 +53,19 @@ export const AcpCommand = effectCmd<NetworkOptions & { cwd: string; attach?: str
         if (!token) {
           return yield* fail("--attach requires a scoped product-host bearer in OPENCODE_ACP_ATTACH_TOKEN")
         }
+        const prefix = url.pathname.replace(/\/$/, "")
+        const scopedReads = new Set(
+          ["/global/event", "/config/providers", "/agent", "/command", "/skill", "/config"].map(
+            (path) => prefix + path,
+          ),
+        )
         return {
           baseUrl: url.href,
           headers: { Authorization: `Bearer ${token}` },
           fetch: Object.assign(
             (request: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
               const target = new URL(request instanceof Request ? request.url : request)
-              if (target.pathname === `${url.pathname.replace(/\/$/, "")}/global/event`) {
+              if ((init?.method ?? (request instanceof Request ? request.method : "GET")) === "GET" && scopedReads.has(target.pathname)) {
                 target.searchParams.set("sessionId", session)
                 request = request instanceof Request ? new Request(target, request) : target
               }
@@ -105,7 +111,7 @@ export const AcpCommand = effectCmd<NetworkOptions & { cwd: string; attach?: str
     })
 
     const stream = ndJsonStream(input, output)
-    const agent = ACP.init({ sdk, attached: args.attach !== undefined, attachedSessionID: session })
+    const agent = ACP.init({ sdk, attached: args.attach !== undefined, attachedSessionID: session, eventFetch: connection.fetch })
 
     new AgentSideConnection((conn) => {
       ACPProfile.mark("cli.acp.connection.create")

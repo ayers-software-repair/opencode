@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test"
 import type { AgentSideConnection } from "@agentclientprotocol/sdk"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { createOpencodeClient } from "@opencode-ai/sdk/v2"
 import type { Event, Message, OpencodeClient, Part, SessionMessageResponse, ToolPart } from "@opencode-ai/sdk/v2"
 import { Effect, ManagedRuntime } from "effect"
 import { ACPEvent } from "@/acp/event"
@@ -319,6 +320,39 @@ async function createKnownSession(
 }
 
 describe("acp event routing", () => {
+  it("does not dispatch a prompt while the scoped event request is pending or refused", async () => {
+    const fixture = createHarness()
+    const requested = Promise.withResolvers<void>()
+    const response = Promise.withResolvers<Response>()
+    const eventFetch = Object.assign(
+      () => {
+        requested.resolve()
+        return response.promise
+      },
+      { preconnect: fetch.preconnect },
+    )
+    const subscription = new ACPEvent.Subscription({
+      sdk: createOpencodeClient({ baseUrl: "http://localhost" }),
+      connection: fixture.connection,
+      session: fixture.session,
+      attached: true,
+      eventFetch,
+    })
+    const calls: string[] = []
+    subscription.start()
+    try {
+      const prompt = subscription.runUntilIdle("ses_loaded", async () => calls.push("prompt"))
+      const outcome = prompt.catch((error: unknown) => error)
+      await requested.promise
+      expect(calls).toEqual([])
+      response.resolve(new Response(null, { status: 403 }))
+      expect(await outcome).toEqual(new Error("ACP event stream unavailable"))
+      expect(calls).toEqual([])
+    } finally {
+      subscription.stop()
+    }
+  })
+
   it("routes message.part.delta by sessionID without cross-session pollution", async () => {
     const harness = createHarness()
     await createKnownSession(harness.session, "ses_a", { messageId: "msg_a", partId: "part_a", partType: "text" })

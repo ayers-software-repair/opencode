@@ -76,6 +76,7 @@ export function make(input: {
   sdk: OpencodeClient
   attached?: boolean
   attachedSessionID?: string
+  eventFetch?: typeof fetch
   connection?: ServiceConnection
   directory?: Directory.Interface
   session?: ACPSession.Interface
@@ -87,7 +88,7 @@ export function make(input: {
   const registeredMcp = new Map<string, Set<string>>()
   const sessionSnapshots = new Map<string, Directory.Snapshot>()
   const events = input.connection
-    ? ACPEvent.start({ sdk: input.sdk, connection: input.connection, session, attached: input.attached })
+    ? ACPEvent.start({ sdk: input.sdk, connection: input.connection, session, attached: input.attached, eventFetch: input.eventFetch })
     : undefined
   if (events) input.eventSubscription?.(events)
   const runUntilIdle = <A>(sessionId: string, fn: () => Promise<A>) =>
